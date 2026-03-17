@@ -34,12 +34,11 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()  # Acknowledge button click
 
-    # “Back to Main Menu” button
     back_button = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back to Main Menu", callback_data='main')]])
 
-    # Handle each button click
+    # Instead of edit_message_text, we use reply_text to prevent crashes
     if query.data == 'earn':
-        await query.edit_message_text(
+        await query.message.reply_text(
             "💸 Here are ways to earn online using Telegram:\n"
             "1. Share referral links\n"
             "2. Join Telegram affiliate programs\n"
@@ -47,19 +46,19 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_button
         )
     elif query.data == 'wallet':
-        await query.edit_message_text(
+        await query.message.reply_text(
             "💰 Your TON wallet is ready!\n"
             "Check balance, transactions, or manage your wallet here.",
             reply_markup=back_button
         )
     elif query.data == 'ads':
-        await query.edit_message_text(
+        await query.message.reply_text(
             "📢 Manage your Telegram ads easily!\n"
             "You can create campaigns and track performance here.",
             reply_markup=back_button
         )
     elif query.data == 'tools':
-        await query.edit_message_text(
+        await query.message.reply_text(
             "🛠 Tools & Resources:\n"
             "- Guides for online business\n"
             "- Productivity tools\n"
@@ -67,7 +66,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_button
         )
     elif query.data == 'updates':
-        await query.edit_message_text(
+        await query.message.reply_text(
             "📈 Updates & Tips:\n"
             "- New earning methods\n"
             "- Latest TON wallet updates\n"
@@ -75,8 +74,8 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=back_button
         )
     elif query.data == 'main':
-        # Return to main menu
-        await query.edit_message_text(
+        # Send new main menu
+        await query.message.reply_text(
             "Main Menu:",
             reply_markup=main_menu_keyboard()
         )
