@@ -3,9 +3,7 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 import requests
 import sqlite3
 
-
-
-TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g" 
+TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"  # <-- Replace this only
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
 TON_API_KEY = "41d6584cbce3d9d50c0ca67e38becfe1154236dfe27a7ff8f0992e2b7c613ace"
 ADMIN_IDS = ["8366726152", "6502235975"]  # Your Telegram IDs
@@ -174,4 +172,62 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         # Send to admins
         for admin_id in ADMIN_IDS:
-            await context.bot.send
+            await context.bot.send_message(admin_id, f"📢 New Ad Submitted by {user_id}\n\n"
+                                                     f"{context.user_data['ad_text']}\n{context.user_data['ad_link']}\n💰 Budget: {amount} TON\n"
+                                                     f"✅ Click approve to post", reply_markup=None)
+
+        await update.message.reply_text("✅ Ad submitted for approval.")
+        context.user_data['ads_stage'] = None
+        return
+
+# ===== AUTO TON BALANCE UPDATE =====
+def update_balances_from_ton_api():
+    """
+    Auto-update user balances using TON API
+    """
+    try:
+        res = requests.get(
+            f"https://tonapi.io/v2/accounts/balance?account={TON_WALLET}",
+            headers={"x-api-key": TON_API_KEY}
+        )
+        data = res.json()
+        balance = float(data.get("balance", 0))
+        # Optional: distribute new funds to users/referrals if needed
+        # This function can be run periodically with a scheduler
+    except Exception as e:
+        print("Error updating TON balance:", e)
+
+# ===== ADMIN DASHBOARD =====
+async def admin_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Access denied")
+        return
+
+    cursor.execute("SELECT COUNT(*) FROM users")
+    total_users = cursor.fetchone()[0]
+
+    cursor.execute("SELECT SUM(balance) FROM users")
+    total_balance = cursor.fetchone()[0]
+
+    cursor.execute("SELECT COUNT(*) FROM ads WHERE status='pending'")
+    pending_ads = cursor.fetchone()[0]
+
+    await update.message.reply_text(
+        f"📊 Admin Dashboard\n\n"
+        f"Total Users: {total_users}\n"
+        f"Total Balance: {total_balance} TON\n"
+        f"Pending Ads: {pending_ads}"
+    )
+
+# ===== BUILD BOT =====
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(button_handler))
+app.add_handler(CommandHandler("admin", admin_dashboard))
+app.add_handler(CommandHandler("dashboard", admin_dashboard))
+app.add_handler(CommandHandler("menu", start))
+app.add_handler(MessageHandler(None, message_handler))
+
+# ===== RUN BOT =====
+app.run_polling()
