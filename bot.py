@@ -1,254 +1,177 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import (
-    ApplicationBuilder, CommandHandler, CallbackQueryHandler,
-    MessageHandler, filters, ContextTypes
-)
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes
+import requests
 import sqlite3
 
-TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
-ADMIN_IDS = ["6502235975", "8366726152"]
-ADS_CHANNEL = "@your_channel_username"
-ADMIN_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
 
-# ---------------- DATABASE ----------------
-conn = sqlite3.connect("data.db", check_same_thread=False)
+
+TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g" 
+TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
+TON_API_KEY = "41d6584cbce3d9d50c0ca67e38becfe1154236dfe27a7ff8f0992e2b7c613ace"
+ADMIN_IDS = ["8366726152", "6502235975"]  # Your Telegram IDs
+# ====================
+
+# ===== DATABASE SETUP =====
+conn = sqlite3.connect('botdata.db', check_same_thread=False)
 cursor = conn.cursor()
-
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS users (
+CREATE TABLE IF NOT EXISTS users(
     user_id TEXT PRIMARY KEY,
-    balance REAL DEFAULT 0,
-    referrals INTEGER DEFAULT 0
+    balance REAL DEFAULT 0
 )
 """)
-
 cursor.execute("""
-CREATE TABLE IF NOT EXISTS ads (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
+CREATE TABLE IF NOT EXISTS referrals(
+    referrer_id TEXT,
+    count INTEGER DEFAULT 0
+)
+""")
+cursor.execute("""
+CREATE TABLE IF NOT EXISTS ads(
+    ad_id INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id TEXT,
     text TEXT,
     link TEXT,
-    budget REAL,
-    status TEXT
+    amount REAL,
+    status TEXT DEFAULT 'pending'
 )
 """)
-
 conn.commit()
+# ==========================
 
-# ---------------- MENU ----------------
-def main_menu():
-    return InlineKeyboardMarkup([
-        [InlineKeyboardButton("💸 Earn", callback_data='earn')],
-        [InlineKeyboardButton("👥 Referrals", callback_data='ref')],
+# ===== MAIN MENU =====
+def main_menu_keyboard():
+    keyboard = [
+        [InlineKeyboardButton("💸 Earn Money", callback_data='earn')],
+        [InlineKeyboardButton("👥 My Referrals", callback_data='ref')],
         [InlineKeyboardButton("💰 Wallet", callback_data='wallet')],
         [InlineKeyboardButton("📢 Ads", callback_data='ads')],
         [InlineKeyboardButton("🛠 Tools", callback_data='tools')]
-    ])
+    ]
+    return InlineKeyboardMarkup(keyboard)
 
-# ---------------- START ----------------
+# ===== START COMMAND =====
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
 
-    cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
+    # Add user to DB
+    cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
     conn.commit()
 
-    # Referral system
+    # Check referral code
     if context.args:
-        ref = context.args[0]
-        if ref != user_id:
-            cursor.execute("UPDATE users SET referrals = referrals + 1, balance = balance + 1 WHERE user_id=?", (ref,))
+        referrer_id = context.args[0]
+        if referrer_id != user_id:
+            cursor.execute("INSERT OR IGNORE INTO referrals(referrer_id,count) VALUES(?,0)", (referrer_id,))
+            cursor.execute("UPDATE referrals SET count = count + 1 WHERE referrer_id=?", (referrer_id,))
             conn.commit()
 
-    await update.message.reply_text(
-        "🚀 Welcome to BizBoostPro\n\nChoose an option below:",
-        reply_markup=main_menu()
+    welcome_text = (
+        "🎉 Welcome to BizBoostPro!\n\n"
+        "Earn money, manage your wallet, and run ads easily.\n\n"
+        "Choose an option below 👇"
     )
+    await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard())
 
-# ---------------- BUTTON HANDLER ----------------
-async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    user_id = str(q.from_user.id)
+# ===== BUTTON HANDLER =====
+async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    user_id = str(query.from_user.id)
 
-    back = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬅️ Back to Menu", callback_data='main')]
-    ])
+    back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back to Main Menu", callback_data='main')]])
 
-    if q.data == "earn":
-        link = f"https://t.me/BizBoostProBot?start={user_id}"
-        await q.edit_message_text(
-            f"💸 Your referral link:\n{link}\n\nEarn $1 per referral!",
-            reply_markup=back
-        )
-
-    elif q.data == "ref":
-        cursor.execute("SELECT referrals FROM users WHERE user_id=?", (user_id,))
-        ref = cursor.fetchone()[0]
-        await q.edit_message_text(f"👥 Total Referrals: {ref}", reply_markup=back)
-
-    elif q.data == "wallet":
+    # ----- EARN -----
+    if query.data == 'earn':
+        referral_link = f"https://t.me/BizBoostProBot?start={user_id}"
         cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        bal = cursor.fetchone()[0]
-        await q.edit_message_text(
-            f"💰 Balance: ${bal}",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("💳 Deposit", callback_data='deposit')],
-                [InlineKeyboardButton("📤 Withdraw", callback_data='withdraw')],
-                [InlineKeyboardButton("⬅️ Back", callback_data='main')]
-            ])
+        balance = cursor.fetchone()[0]
+        await query.edit_message_text(
+            f"💸 Earn Money\n\n"
+            f"Your Balance: {balance} TON\n"
+            f"Invite people using your link:\n{referral_link}\n\n"
+            f"You earn rewards for every person that joins!",
+            reply_markup=back_btn
         )
 
-    elif q.data == "deposit":
-        await q.edit_message_text(
-            f"💳 Send TON to this address:\n{ADMIN_WALLET}\n\nAfter payment, contact admin.",
-            reply_markup=back
+    # ----- REFERRALS -----
+    elif query.data == 'ref':
+        cursor.execute("SELECT count FROM referrals WHERE referrer_id=?", (user_id,))
+        row = cursor.fetchone()
+        count = row[0] if row else 0
+        await query.edit_message_text(
+            f"👥 Your Referrals: {count}\n\nKeep inviting to earn more 💸",
+            reply_markup=back_btn
         )
 
-    elif q.data == "withdraw":
+    # ----- WALLET -----
+    elif query.data == 'wallet':
         cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        bal = cursor.fetchone()[0]
-
-        if bal <= 0:
-            await q.edit_message_text("❌ No balance to withdraw", reply_markup=back)
-        else:
-            for admin in ADMIN_IDS:
-                await context.bot.send_message(
-                    chat_id=admin,
-                    text=f"💸 Withdraw Request\nUser: {user_id}\nAmount: ${bal}"
-                )
-
-            cursor.execute("UPDATE users SET balance=0 WHERE user_id=?", (user_id,))
-            conn.commit()
-
-            await q.edit_message_text("✅ Withdraw request sent", reply_markup=back)
-
-    elif q.data == "ads":
-        context.user_data["step"] = "text"
-        await q.edit_message_text("📢 Send your Ad TEXT")
-
-    elif q.data == "tools":
-        await q.edit_message_text(
-            "🛠 Tools:\n\n💼 Business ideas\n📊 Growth tips\n💰 Passive income",
-            reply_markup=back
+        balance = cursor.fetchone()[0]
+        await query.edit_message_text(
+            f"💰 Your Wallet Balance: {balance} TON\n\n"
+            f"Wallet Address:\n{TON_WALLET}",
+            reply_markup=back_btn
         )
 
-    elif q.data == "main":
-        await q.edit_message_text("🏠 Main Menu", reply_markup=main_menu())
+    # ----- ADS -----
+    elif query.data == 'ads':
+        await update.message.reply_text("📢 Send your Ad TEXT:", reply_markup=None)
+        context.user_data['ads_stage'] = 'text'
 
-# ---------------- USER MESSAGE HANDLER ----------------
-async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # ----- TOOLS -----
+    elif query.data == 'tools':
+        await update.message.reply_text(
+            "🛠 Tools & Resources coming soon...",
+            reply_markup=back_btn
+        )
+
+    # ----- MAIN MENU -----
+    elif query.data == 'main':
+        await query.edit_message_text("🏠 Main Menu", reply_markup=main_menu_keyboard())
+
+# ===== MESSAGE HANDLER FOR ADS & DEPOSITS =====
+async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = update.message.text
 
-    if "step" in context.user_data:
-
-        if context.user_data["step"] == "text":
-            context.user_data["ad_text"] = text
-            context.user_data["step"] = "link"
-            await update.message.reply_text("🔗 Send your Ad LINK")
-
-        elif context.user_data["step"] == "link":
-            context.user_data["ad_link"] = text
-            context.user_data["step"] = "budget"
-            await update.message.reply_text("💰 Enter your budget")
-
-        elif context.user_data["step"] == "budget":
-            try:
-                budget = float(text)
-
-                cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-                bal = cursor.fetchone()[0]
-
-                if bal < budget:
-                    await update.message.reply_text(
-                        f"❌ Not enough balance\nBalance: ${bal}\nNeeded: ${budget}"
-                    )
-                    context.user_data.clear()
-                    return
-
-                cursor.execute(
-                    "INSERT INTO ads (user_id, text, link, budget, status) VALUES (?, ?, ?, ?, ?)",
-                    (user_id, context.user_data["ad_text"], context.user_data["ad_link"], budget, "pending")
-                )
-                conn.commit()
-
-                ad_id = cursor.lastrowid
-
-                for admin in ADMIN_IDS:
-                    await context.bot.send_message(
-                        chat_id=admin,
-                        text=(
-                            f"🚨 NEW AD\n\nUser: {user_id}\nAd ID: {ad_id}\n\n"
-                            f"{context.user_data['ad_text']}\n\n"
-                            f"{context.user_data['ad_link']}\n\nBudget: ${budget}"
-                        ),
-                        reply_markup=InlineKeyboardMarkup([
-                            [InlineKeyboardButton("✅ Approve", callback_data=f"approve_{ad_id}")],
-                            [InlineKeyboardButton("❌ Reject", callback_data=f"reject_{ad_id}")]
-                        ])
-                    )
-
-                context.user_data.clear()
-                await update.message.reply_text("✅ Ad sent for approval")
-
-            except:
-                await update.message.reply_text("❌ Invalid amount")
-
-# ---------------- ADMIN APPROVAL ----------------
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    await q.answer()
-    admin_id = str(q.from_user.id)
-
-    if admin_id not in ADMIN_IDS:
+    # Handle Ads Submission
+    if context.user_data.get('ads_stage') == 'text':
+        context.user_data['ad_text'] = text
+        await update.message.reply_text("🔗 Send your Ad LINK")
+        context.user_data['ads_stage'] = 'link'
         return
 
-    if q.data.startswith("approve_"):
-        ad_id = q.data.split("_")[1]
+    if context.user_data.get('ads_stage') == 'link':
+        context.user_data['ad_link'] = text
+        await update.message.reply_text("💰 Enter budget amount in TON")
+        context.user_data['ads_stage'] = 'budget'
+        return
 
-        cursor.execute("SELECT text, link, user_id, budget FROM ads WHERE id=?", (ad_id,))
-        ad = cursor.fetchone()
-
-        if not ad:
-            await q.edit_message_text("❌ Not found")
+    if context.user_data.get('ads_stage') == 'budget':
+        try:
+            amount = float(text)
+        except:
+            await update.message.reply_text("Please enter a valid number for the budget.")
             return
 
-        text, link, user_id, budget = ad
-
+        # Check balance
         cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        bal = cursor.fetchone()[0]
-
-        if bal < budget:
-            await q.edit_message_text("❌ User has no balance")
+        balance = cursor.fetchone()[0]
+        if balance < amount:
+            await update.message.reply_text("❌ Insufficient balance. Please deposit TON first.")
+            context.user_data['ads_stage'] = None
             return
 
-        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (budget, user_id))
+        # Deduct balance
+        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, user_id))
         conn.commit()
 
-        await context.bot.send_message(
-            chat_id=ADS_CHANNEL,
-            text=f"{text}\n\n👉 {link}"
-        )
-
-        cursor.execute("UPDATE ads SET status='approved' WHERE id=?", (ad_id,))
+        # Save ad
+        cursor.execute("INSERT INTO ads(user_id, text, link, amount) VALUES(?,?,?,?)",
+                       (user_id, context.user_data['ad_text'], context.user_data['ad_link'], amount))
         conn.commit()
 
-        await q.edit_message_text("✅ Approved & Posted")
-
-    elif q.data.startswith("reject_"):
-        ad_id = q.data.split("_")[1]
-
-        cursor.execute("UPDATE ads SET status='rejected' WHERE id=?", (ad_id,))
-        conn.commit()
-
-        await q.edit_message_text("❌ Rejected")
-
-# ---------------- RUN ----------------
-app = ApplicationBuilder().token(TOKEN).build()
-
-app.add_handler(CommandHandler("start", start))
-app.add_handler(CallbackQueryHandler(buttons))
-app.add_handler(CallbackQueryHandler(admin))
-app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
-
-app.run_polling()
+        # Send to admins
+        for admin_id in ADMIN_IDS:
+            await context.bot.send
