@@ -1,29 +1,30 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes
-import requests
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 import sqlite3
+import requests
 
-TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"  # <-- Replace this only
-TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
+TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g" 
 TON_API_KEY = "41d6584cbce3d9d50c0ca67e38becfe1154236dfe27a7ff8f0992e2b7c613ace"
-ADMIN_IDS = ["8366726152", "6502235975"]  # Your Telegram IDs
-# ====================
+ADMIN_IDS = ["8366726152", "6502235975"]  # Main + secondary admin Telegram IDs
 
 # ===== DATABASE SETUP =====
 conn = sqlite3.connect('botdata.db', check_same_thread=False)
 cursor = conn.cursor()
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users(
     user_id TEXT PRIMARY KEY,
     balance REAL DEFAULT 0
 )
 """)
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS referrals(
     referrer_id TEXT,
     count INTEGER DEFAULT 0
 )
 """)
+
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS ads(
     ad_id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -35,7 +36,6 @@ CREATE TABLE IF NOT EXISTS ads(
 )
 """)
 conn.commit()
-# ==========================
 
 # ===== MAIN MENU =====
 def main_menu_keyboard():
@@ -43,7 +43,7 @@ def main_menu_keyboard():
         [InlineKeyboardButton("💸 Earn Money", callback_data='earn')],
         [InlineKeyboardButton("👥 My Referrals", callback_data='ref')],
         [InlineKeyboardButton("💰 Wallet", callback_data='wallet')],
-        [InlineKeyboardButton("📢 Ads", callback_data='ads')],
+        [InlineKeyboardButton("📢 Ads System", callback_data='ads')],
         [InlineKeyboardButton("🛠 Tools", callback_data='tools')]
     ]
     return InlineKeyboardMarkup(keyboard)
@@ -56,7 +56,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
     conn.commit()
 
-    # Check referral code
+    # Handle referral links
     if context.args:
         referrer_id = context.args[0]
         if referrer_id != user_id:
@@ -85,8 +85,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
         balance = cursor.fetchone()[0]
         await query.edit_message_text(
-            f"💸 Earn Money\n\n"
-            f"Your Balance: {balance} TON\n"
+            f"💸 Earn Money\n\nYour Balance: {balance} TON\n"
             f"Invite people using your link:\n{referral_link}\n\n"
             f"You earn rewards for every person that joins!",
             reply_markup=back_btn
@@ -107,28 +106,24 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
         balance = cursor.fetchone()[0]
         await query.edit_message_text(
-            f"💰 Your Wallet Balance: {balance} TON\n\n"
-            f"Wallet Address:\n{TON_WALLET}",
+            f"💰 Your Wallet Balance: {balance} TON\nWallet Address:\n{TON_WALLET}",
             reply_markup=back_btn
         )
 
     # ----- ADS -----
     elif query.data == 'ads':
-        await update.message.reply_text("📢 Send your Ad TEXT:", reply_markup=None)
+        await update.message.reply_text("📢 Send your Ad TEXT:")
         context.user_data['ads_stage'] = 'text'
 
     # ----- TOOLS -----
     elif query.data == 'tools':
-        await update.message.reply_text(
-            "🛠 Tools & Resources coming soon...",
-            reply_markup=back_btn
-        )
+        await update.message.reply_text("🛠 Tools & Resources coming soon...", reply_markup=back_btn)
 
     # ----- MAIN MENU -----
     elif query.data == 'main':
         await query.edit_message_text("🏠 Main Menu", reply_markup=main_menu_keyboard())
 
-# ===== MESSAGE HANDLER FOR ADS & DEPOSITS =====
+# ===== MESSAGE HANDLER FOR ADS =====
 async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = update.message.text
@@ -153,7 +148,6 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("Please enter a valid number for the budget.")
             return
 
-        # Check balance
         cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
         balance = cursor.fetchone()[0]
         if balance < amount:
@@ -161,41 +155,51 @@ async def message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data['ads_stage'] = None
             return
 
-        # Deduct balance
-        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, user_id))
-        conn.commit()
-
-        # Save ad
+        # Save ad with pending status
         cursor.execute("INSERT INTO ads(user_id, text, link, amount) VALUES(?,?,?,?)",
                        (user_id, context.user_data['ad_text'], context.user_data['ad_link'], amount))
         conn.commit()
 
-        # Send to admins
+        # Notify admins
         for admin_id in ADMIN_IDS:
-            await context.bot.send_message(admin_id, f"📢 New Ad Submitted by {user_id}\n\n"
-                                                     f"{context.user_data['ad_text']}\n{context.user_data['ad_link']}\n💰 Budget: {amount} TON\n"
-                                                     f"✅ Click approve to post", reply_markup=None)
+            await context.bot.send_message(
+                admin_id,
+                f"📢 New Ad Submitted by {user_id}\n\n"
+                f"{context.user_data['ad_text']}\n{context.user_data['ad_link']}\n💰 Budget: {amount} TON\n"
+                f"✅ Use /approve_{cursor.lastrowid} to approve"
+            )
 
-        await update.message.reply_text("✅ Ad submitted for approval.")
+        await update.message.reply_text("✅ Ad submitted for approval. Admin will review it.")
         context.user_data['ads_stage'] = None
+
+# ===== ADMIN COMMANDS =====
+async def admin_approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = str(update.effective_user.id)
+    if user_id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Access denied")
         return
 
-# ===== AUTO TON BALANCE UPDATE =====
-def update_balances_from_ton_api():
-    """
-    Auto-update user balances using TON API
-    """
-    try:
-        res = requests.get(
-            f"https://tonapi.io/v2/accounts/balance?account={TON_WALLET}",
-            headers={"x-api-key": TON_API_KEY}
-        )
-        data = res.json()
-        balance = float(data.get("balance", 0))
-        # Optional: distribute new funds to users/referrals if needed
-        # This function can be run periodically with a scheduler
-    except Exception as e:
-        print("Error updating TON balance:", e)
+    if len(context.args) != 1:
+        await update.message.reply_text("Usage: /approve_ADID")
+        return
+
+    ad_id = context.args[0]
+    cursor.execute("SELECT user_id, text, link, amount FROM ads WHERE ad_id=? AND status='pending'", (ad_id,))
+    ad = cursor.fetchone()
+    if not ad:
+        await update.message.reply_text("❌ Ad not found or already approved.")
+        return
+
+    ad_user, text, link, amount = ad
+
+    # Deduct balance automatically
+    cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, ad_user))
+    cursor.execute("UPDATE ads SET status='approved' WHERE ad_id=?", (ad_id,))
+    conn.commit()
+
+    # Send approved ad confirmation to user
+    await context.bot.send_message(ad_user, f"✅ Your ad has been approved and will be posted.\n\n{text}\n{link}")
+    await update.message.reply_text(f"✅ Ad {ad_id} approved and balance deducted.")
 
 # ===== ADMIN DASHBOARD =====
 async def admin_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -220,14 +224,14 @@ async def admin_dashboard(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"Pending Ads: {pending_ads}"
     )
 
-# ===== BUILD BOT =====
+# ===== BOT SETUP =====
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button_handler))
 app.add_handler(CommandHandler("admin", admin_dashboard))
 app.add_handler(CommandHandler("dashboard", admin_dashboard))
-app.add_handler(CommandHandler("menu", start))
-app.add_handler(MessageHandler(None, message_handler))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, message_handler))
+app.add_handler(CommandHandler("approve", admin_approve))  # Usage: /approve <ad_id>
 
 # ===== RUN BOT =====
 app.run_polling()
