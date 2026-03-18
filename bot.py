@@ -2,7 +2,14 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import sqlite3
 
+
+
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
+
+# ------------------------------
+# Admin TON Wallet (you control funds)
+# ------------------------------
+ADMIN_WALLET = "YOUR_TON_WALLET_ADDRESS_HERE"
 
 # ------------------------------
 # Database setup
@@ -10,7 +17,7 @@ TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
 conn = sqlite3.connect("data.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Users table with referrals, balance, withdrawal requests
+# Users table with referrals, balance, withdraw requests
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
@@ -30,6 +37,7 @@ def main_menu_keyboard():
         [InlineKeyboardButton("👥 My Referrals", callback_data='ref')],
         [InlineKeyboardButton("💰 Wallet", callback_data='wallet')],
         [InlineKeyboardButton("📤 Withdraw", callback_data='withdraw')],
+        [InlineKeyboardButton("💳 Deposit", callback_data='deposit')],
         [InlineKeyboardButton("📢 Ads", callback_data='ads')],
         [InlineKeyboardButton("🛠 Tools", callback_data='tools')]
     ]
@@ -58,7 +66,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await update.message.reply_text(
         "🎉 Welcome to BizBoostPro!\n\n"
-        "Earn money, manage your wallet, and run ads easily.\n\n"
+        "Earn money, manage your wallet, deposit TON, and run ads easily.\n\n"
         "Choose an option below 👇",
         reply_markup=main_menu_keyboard()
     )
@@ -69,13 +77,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-
     user_id = str(query.from_user.id)
+
     back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back to Main Menu", callback_data='main')]])
 
     # 💸 Earn Money
     if query.data == 'earn':
-        referral_link = f"https://t.me/BizBoostProBot?start={user_id}"  # Replace if username changes
+        referral_link = f"https://t.me/BizBoostProBot?start={user_id}"  # <-- Replace with your bot username
         await query.edit_message_text(
             f"💸 Your Referral Link:\n{referral_link}\n\nInvite friends to earn $1 per referral!",
             reply_markup=back_btn
@@ -120,7 +128,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await query.edit_message_text(
                 f"📤 Withdrawal requested!\nAmount: ${balance:.2f}\n"
                 f"Pending withdrawal: ${pending + balance:.2f}\n\n"
-                "Admins will process your request soon!",
+                "Admin will approve and process TON payout.",
                 reply_markup=back_btn
             )
         else:
@@ -128,6 +136,27 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "⚠️ You have no balance to withdraw yet!",
                 reply_markup=back_btn
             )
+
+    # 💳 Deposit
+    elif query.data == 'deposit':
+        await query.edit_message_text(
+            f"💳 Deposit TON\n\n"
+            f"Send TON to this wallet address to fund your balance:\n\n{ADMIN_WALLET}\n\n"
+            "After sending, click 'Check Deposit' to update your balance.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Check Deposit", callback_data='check_deposit')],
+                [InlineKeyboardButton("⬅️ Back to Main Menu", callback_data='main')]
+            ])
+        )
+
+    # ✅ Check Deposit (placeholder for TON API)
+    elif query.data == 'check_deposit':
+        # TODO: Integrate TON blockchain API here
+        # For now, simulate deposit manually approved by admin
+        await query.edit_message_text(
+            "✅ Deposit confirmed! Your balance has been updated by admin.",
+            reply_markup=back_btn
+        )
 
     # 📢 Ads
     elif query.data == 'ads':
@@ -156,5 +185,4 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button_handler))
-
 app.run_polling()
