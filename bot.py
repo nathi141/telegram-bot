@@ -7,18 +7,18 @@ import requests
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"  # Your Bot Token
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"  # Your TON Wallet
 TON_API_KEY = "41d6584cbce3d9d50c0ca67e38becfe1154236dfe27a7ff8f0992e2b7c613ace"  # TON API Key
-ADMIN_IDS = ["8366726152", "6502235975"]  # Admin Telegram IDs
+ADMIN_IDS = [8366726152, 6502235975]  # Admin Telegram IDs as integers
 
 # ================= DATABASE =================
 conn = sqlite3.connect('bot.db', check_same_thread=False)
 cursor = conn.cursor()
 
-cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id TEXT PRIMARY KEY, balance REAL DEFAULT 0)")
-cursor.execute("CREATE TABLE IF NOT EXISTS referrals (referrer_id TEXT, count INTEGER DEFAULT 0)")
+cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0)")
+cursor.execute("CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER, count INTEGER DEFAULT 0)")
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS ads (
     ad_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT,
+    user_id INTEGER,
     text TEXT,
     link TEXT,
     amount REAL,
@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS ads (
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS withdrawals (
     withdraw_id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id TEXT,
+    user_id INTEGER,
     amount REAL,
     status TEXT DEFAULT 'pending'
 )
@@ -47,12 +47,12 @@ def main_menu():
 
 # ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
+    user_id = update.effective_user.id
     cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
     conn.commit()
 
     if context.args:
-        ref = context.args[0]
+        ref = int(context.args[0])
         if ref != user_id:
             cursor.execute("INSERT OR IGNORE INTO referrals(referrer_id,count) VALUES(?,0)", (ref,))
             cursor.execute("UPDATE referrals SET count = count + 1 WHERE referrer_id=?", (ref,))
@@ -67,7 +67,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
-    user_id = str(q.from_user.id)
+    user_id = q.from_user.id
     back = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]])
 
     if q.data == "earn":
@@ -108,23 +108,22 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= MESSAGE HANDLER =================
 async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
+    user_id = update.effective_user.id
     text = update.message.text
 
     # ---------------- Ads Flow ----------------
-    if context.user_data.get("step") == "text":
+    step = context.user_data.get("step")
+    if step == "text":
         context.user_data["ad_text"] = text
         context.user_data["step"] = "link"
         await update.message.reply_text("🔗 Send your Ad LINK")
         return
-
-    if context.user_data.get("step") == "link":
+    if step == "link":
         context.user_data["ad_link"] = text
         context.user_data["step"] = "amount"
         await update.message.reply_text("💰 Enter budget")
         return
-
-    if context.user_data.get("step") == "amount":
+    if step == "amount":
         try:
             amount = float(text)
         except:
@@ -133,7 +132,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
         bal = cursor.fetchone()[0]
-
         if bal < amount:
             await update.message.reply_text("❌ Not enough balance")
             context.user_data.clear()
@@ -144,7 +142,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         conn.commit()
         ad_id = cursor.lastrowid
 
-        # Notify admins
         for admin in ADMIN_IDS:
             await context.bot.send_message(
                 admin,
@@ -155,7 +152,7 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.user_data.clear()
 
     # ---------------- Withdraw Flow ----------------
-    if context.user_data.get("step") == "withdraw_amount":
+    if step == "withdraw_amount":
         try:
             amount = float(text)
         except:
@@ -164,7 +161,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
         bal = cursor.fetchone()[0]
-
         if bal < amount:
             await update.message.reply_text("❌ Insufficient balance")
             context.user_data.clear()
@@ -178,21 +174,19 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 admin,
                 f"💰 Withdrawal request by {user_id}\nAmount: {amount}\nApprove: /approve_withdraw {cursor.lastrowid}"
             )
-
         await update.message.reply_text("✅ Withdrawal submitted for admin approval")
         context.user_data.clear()
 
 # ================= ADMIN COMMANDS =================
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    if user_id not in ADMIN_IDS:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Access denied")
         return
     if not context.args:
         await update.message.reply_text("Usage: /approve <ad_id>")
         return
 
-    ad_id = context.args[0]
+    ad_id = int(context.args[0])
     cursor.execute("SELECT user_id, amount, status FROM ads WHERE ad_id=? AND status='pending'", (ad_id,))
     ad = cursor.fetchone()
     if not ad:
@@ -207,14 +201,13 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Ad #{ad_id} approved and balance deducted")
 
 async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-    if user_id not in ADMIN_IDS:
+    if update.effective_user.id not in ADMIN_IDS:
         await update.message.reply_text("❌ Access denied")
         return
     if not context.args:
         await update.message.reply_text("Usage: /approve_withdraw <withdraw_id>")
         return
-    wid = context.args[0]
+    wid = int(context.args[0])
     cursor.execute("SELECT user_id, amount, status FROM withdrawals WHERE withdraw_id=? AND status='pending'", (wid,))
     req = cursor.fetchone()
     if not req:
