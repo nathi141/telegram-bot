@@ -2,14 +2,12 @@ from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 import sqlite3
 
-
-
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
 
 # ------------------------------
-# Admin TON Wallet (you control funds)
+# Admin TON Wallet (your Telegram TON Wallet)
 # ------------------------------
-ADMIN_WALLET = "YOUR_TON_WALLET_ADDRESS_HERE"
+ADMIN_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
 
 # ------------------------------
 # Database setup
@@ -17,7 +15,7 @@ ADMIN_WALLET = "YOUR_TON_WALLET_ADDRESS_HERE"
 conn = sqlite3.connect("data.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Users table with referrals, balance, withdraw requests
+# Users table: referrals, balance, withdraw requests
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
@@ -83,7 +81,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 💸 Earn Money
     if query.data == 'earn':
-        referral_link = f"https://t.me/BizBoostProBot?start={user_id}"  # <-- Replace with your bot username
+        referral_link = f"https://t.me/BizBoostProBot?start={user_id}"  # <-- Your bot username
         await query.edit_message_text(
             f"💸 Your Referral Link:\n{referral_link}\n\nInvite friends to earn $1 per referral!",
             reply_markup=back_btn
@@ -149,10 +147,9 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ])
         )
 
-    # ✅ Check Deposit (placeholder for TON API)
+    # ✅ Check Deposit (placeholder)
     elif query.data == 'check_deposit':
-        # TODO: Integrate TON blockchain API here
-        # For now, simulate deposit manually approved by admin
+        # TODO: Integrate TON blockchain API to verify deposits
         await query.edit_message_text(
             "✅ Deposit confirmed! Your balance has been updated by admin.",
             reply_markup=back_btn
