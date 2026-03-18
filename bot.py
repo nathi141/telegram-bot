@@ -125,10 +125,61 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif q.data == "main":
         await q.edit_message_text("🏠 Main Menu", reply_markup=menu())
 
-# ---------------- HANDLE MESSAGES ----------------
-async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = update.message.text
+
+    # Ads flow
+    if "ad_step" in context.user_data:
+
+        if context.user_data["ad_step"] == "text":
+            context.user_data["ad_text"] = text
+            context.user_data["ad_step"] = "link"
+            await update.message.reply_text("🔗 Send your Ad LINK")
+
+        elif context.user_data["ad_step"] == "link":
+            context.user_data["ad_link"] = text
+            context.user_data["ad_step"] = "budget"
+            await update.message.reply_text("💰 Enter budget amount")
+
+        elif context.user_data["ad_step"] == "budget":
+            try:
+                budget = float(text)
+
+                cursor.execute(
+                    "INSERT INTO ads (user_id, text, link, budget, status) VALUES (?, ?, ?, ?, ?)",
+                    (user_id, context.user_data["ad_text"], context.user_data["ad_link"], budget, "pending")
+                )
+                conn.commit()
+
+                # Get last inserted ad ID
+                ad_id = cursor.lastrowid
+
+                # Send to ALL admins instantly
+                for admin in ADMIN_IDS:
+                    await context.bot.send_message(
+                        chat_id=admin,
+                        text=(
+                            f"🚨 New Ad Submission\n\n"
+                            f"User: {user_id}\n"
+                            f"Ad ID: {ad_id}\n\n"
+                            f"{context.user_data['ad_text']}\n\n"
+                            f"🔗 {context.user_data['ad_link']}\n"
+                            f"💰 Budget: ${budget}"
+                        ),
+                        reply_markup=InlineKeyboardMarkup([
+                            [InlineKeyboardButton("✅ Approve", callback_data=f"approve_{ad_id}")],
+                            [InlineKeyboardButton("❌ Reject", callback_data=f"reject_{ad_id}")]
+                        ])
+                    )
+
+                context.user_data.clear()
+
+                await update.message.reply_text("✅ Ad submitted successfully and sent to admin")
+
+            except:
+                await update.message.reply_text("❌ Invalid budget")
 
     # Ads flow
     if "ad_step" in context.user_data:
