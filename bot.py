@@ -10,31 +10,33 @@ TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
 conn = sqlite3.connect("data.db", check_same_thread=False)
 cursor = conn.cursor()
 
-# Create users table if it doesn't exist
+# Users table with referrals, balance, withdrawal requests
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id TEXT PRIMARY KEY,
     referrals INTEGER DEFAULT 0,
-    balance REAL DEFAULT 0
+    balance REAL DEFAULT 0,
+    withdraw_request REAL DEFAULT 0
 )
 """)
 conn.commit()
 
 # ------------------------------
-# Main menu keyboard
+# Main Menu Keyboard
 # ------------------------------
 def main_menu_keyboard():
     keyboard = [
         [InlineKeyboardButton("💸 Earn Money", callback_data='earn')],
         [InlineKeyboardButton("👥 My Referrals", callback_data='ref')],
         [InlineKeyboardButton("💰 Wallet", callback_data='wallet')],
+        [InlineKeyboardButton("📤 Withdraw", callback_data='withdraw')],
         [InlineKeyboardButton("📢 Ads", callback_data='ads')],
         [InlineKeyboardButton("🛠 Tools", callback_data='tools')]
     ]
     return InlineKeyboardMarkup(keyboard)
 
 # ------------------------------
-# /start command
+# /start Command
 # ------------------------------
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
@@ -47,11 +49,13 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if context.args:
         referrer_id = context.args[0]
         if referrer_id != user_id:
-            # Increment referral count and add $1 to balance
-            cursor.execute("UPDATE users SET referrals = referrals + 1, balance = balance + 1 WHERE user_id = ?", (referrer_id,))
+            # Increment referrals and add $1 to balance
+            cursor.execute(
+                "UPDATE users SET referrals = referrals + 1, balance = balance + 1 WHERE user_id = ?",
+                (referrer_id,)
+            )
             conn.commit()
 
-    # Send welcome message
     await update.message.reply_text(
         "🎉 Welcome to BizBoostPro!\n\n"
         "Earn money, manage your wallet, and run ads easily.\n\n"
@@ -60,23 +64,20 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 # ------------------------------
-# Button handler
+# Button Handler
 # ------------------------------
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
 
     user_id = str(query.from_user.id)
-
-    back_btn = InlineKeyboardMarkup([
-        [InlineKeyboardButton("⬅️ Back to Main Menu", callback_data='main')]
-    ])
+    back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back to Main Menu", callback_data='main')]])
 
     # 💸 Earn Money
     if query.data == 'earn':
-        referral_link = f"https://t.me/BizBoostProBot?start={user_id}"  # <-- Replace if your bot username changes
+        referral_link = f"https://t.me/BizBoostProBot?start={user_id}"  # Replace if username changes
         await query.edit_message_text(
-            f"💸 Your Referral Link:\n{referral_link}\n\nInvite and earn $1 per referral!",
+            f"💸 Your Referral Link:\n{referral_link}\n\nInvite friends to earn $1 per referral!",
             reply_markup=back_btn
         )
 
@@ -92,13 +93,41 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     # 💰 Wallet
     elif query.data == 'wallet':
-        cursor.execute("SELECT balance FROM users WHERE user_id = ?", (user_id,))
+        cursor.execute("SELECT balance, withdraw_request FROM users WHERE user_id = ?", (user_id,))
         result = cursor.fetchone()
         balance = result[0] if result else 0
+        pending = result[1] if result else 0
         await query.edit_message_text(
-            f"💰 Your Wallet Balance: ${balance:.2f}\n\nWithdrawals coming soon!",
+            f"💰 Wallet Balance: ${balance:.2f}\n"
+            f"📤 Pending Withdraw Requests: ${pending:.2f}",
             reply_markup=back_btn
         )
+
+    # 📤 Withdraw Request
+    elif query.data == 'withdraw':
+        cursor.execute("SELECT balance, withdraw_request FROM users WHERE user_id = ?", (user_id,))
+        result = cursor.fetchone()
+        balance = result[0] if result else 0
+        pending = result[1] if result else 0
+
+        if balance > 0:
+            # Move all balance to withdraw_request
+            cursor.execute(
+                "UPDATE users SET balance = 0, withdraw_request = withdraw_request + ? WHERE user_id = ?",
+                (balance, user_id)
+            )
+            conn.commit()
+            await query.edit_message_text(
+                f"📤 Withdrawal requested!\nAmount: ${balance:.2f}\n"
+                f"Pending withdrawal: ${pending + balance:.2f}\n\n"
+                "Admins will process your request soon!",
+                reply_markup=back_btn
+            )
+        else:
+            await query.edit_message_text(
+                "⚠️ You have no balance to withdraw yet!",
+                reply_markup=back_btn
+            )
 
     # 📢 Ads
     elif query.data == 'ads':
@@ -122,7 +151,7 @@ async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
 
 # ------------------------------
-# Build and run the bot
+# Build & Run Bot
 # ------------------------------
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
