@@ -3,7 +3,6 @@ from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandle
 import sqlite3
 
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
-
 ADMIN_IDS = ["6502235975", "8366726152"]
 ADS_CHANNEL = "@YourAdsChannelUsername"
 ADMIN_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
@@ -51,11 +50,11 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute("INSERT OR IGNORE INTO users (user_id) VALUES (?)", (user_id,))
     conn.commit()
 
-    # referral
+    # referral system
     if context.args:
         ref = context.args[0]
         if ref != user_id:
-            cursor.execute("UPDATE users SET referrals = referrals + 1, balance = balance + 1 WHERE user_id = ?", (ref,))
+            cursor.execute("UPDATE users SET referrals = referrals + 1, balance = balance + 1 WHERE user_id=?", (ref,))
             conn.commit()
 
     await update.message.reply_text(
@@ -63,7 +62,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply_markup=menu()
     )
 
-# ---------------- BUTTONS ----------------
+# ---------------- BUTTON HANDLER ----------------
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -94,7 +93,7 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif q.data == "deposit":
         await q.edit_message_text(
-            f"💳 Send TON to:\n{ADMIN_WALLET}\n\nThen send /confirm",
+            f"💳 Send TON to:\n{ADMIN_WALLET}\n\nAfter payment, contact admin.",
             reply_markup=back
         )
 
@@ -125,12 +124,11 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif q.data == "main":
         await q.edit_message_text("🏠 Main Menu", reply_markup=menu())
 
-
-    async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
+# ---------------- MESSAGE HANDLER (ADS SYSTEM) ----------------
+async def handle_msg(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = update.message.text
 
-    # Ads flow
     if "ad_step" in context.user_data:
 
         if context.user_data["ad_step"] == "text":
@@ -153,10 +151,9 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 )
                 conn.commit()
 
-                # Get last inserted ad ID
                 ad_id = cursor.lastrowid
 
-                # Send to ALL admins instantly
+                # SEND TO ADMINS INSTANTLY
                 for admin in ADMIN_IDS:
                     await context.bot.send_message(
                         chat_id=admin,
@@ -176,64 +173,12 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
                 context.user_data.clear()
 
-                await update.message.reply_text("✅ Ad submitted successfully and sent to admin")
+                await update.message.reply_text("✅ Ad submitted and sent to admin")
 
             except:
                 await update.message.reply_text("❌ Invalid budget")
 
-    # Ads flow
-    if "ad_step" in context.user_data:
-
-        if context.user_data["ad_step"] == "text":
-            context.user_data["ad_text"] = text
-            context.user_data["ad_step"] = "link"
-            await update.message.reply_text("🔗 Send your Ad LINK")
-
-        elif context.user_data["ad_step"] == "link":
-            context.user_data["ad_link"] = text
-            context.user_data["ad_step"] = "budget"
-            await update.message.reply_text("💰 Enter budget amount")
-
-        elif context.user_data["ad_step"] == "budget":
-            try:
-                budget = float(text)
-
-                cursor.execute(
-                    "INSERT INTO ads (user_id, text, link, budget, status) VALUES (?, ?, ?, ?, ?)",
-                    (user_id, context.user_data["ad_text"], context.user_data["ad_link"], budget, "pending")
-                )
-                conn.commit()
-
-                context.user_data.clear()
-
-                await update.message.reply_text("✅ Ad submitted for approval")
-
-            except:
-                await update.message.reply_text("❌ Invalid budget")
-
-# ---------------- ADMIN ----------------
-async def admin(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    user_id = str(update.effective_user.id)
-
-    if user_id not in ADMIN_IDS:
-        await update.message.reply_text("❌ Not authorized")
-        return
-
-    cursor.execute("SELECT * FROM ads WHERE status='pending'")
-    ads = cursor.fetchall()
-
-    for ad in ads:
-        ad_id, uid, text, link, budget, status = ad
-
-        await update.message.reply_text(
-            f"Ad ID: {ad_id}\nUser: {uid}\n{text}\n{link}\nBudget: ${budget}",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ Approve", callback_data=f"approve_{ad_id}")],
-                [InlineKeyboardButton("❌ Reject", callback_data=f"reject_{ad_id}")]
-            ])
-        )
-
-# ---------------- ADMIN BUTTON ----------------
+# ---------------- ADMIN BUTTONS ----------------
 async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
@@ -245,8 +190,12 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if q.data.startswith("approve_"):
         ad_id = q.data.split("_")[1]
 
-        cursor.execute("SELECT text, link FROM ads WHERE id=?", (ad_id,))
-        text, link = cursor.fetchone()
+        cursor.execute("SELECT text, link, user_id, budget FROM ads WHERE id=?", (ad_id,))
+        text, link, uid, budget = cursor.fetchone()
+
+        # Deduct balance
+        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (budget, uid))
+        conn.commit()
 
         # Post to channel
         await context.bot.send_message(
@@ -257,19 +206,20 @@ async def admin_buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         cursor.execute("UPDATE ads SET status='approved' WHERE id=?", (ad_id,))
         conn.commit()
 
-        await q.edit_message_text("✅ Ad posted")
+        await q.edit_message_text("✅ Ad approved & posted")
 
     elif q.data.startswith("reject_"):
         ad_id = q.data.split("_")[1]
+
         cursor.execute("UPDATE ads SET status='rejected' WHERE id=?", (ad_id,))
         conn.commit()
+
         await q.edit_message_text("❌ Ad rejected")
 
 # ---------------- RUN ----------------
 app = ApplicationBuilder().token(TOKEN).build()
 
 app.add_handler(CommandHandler("start", start))
-app.add_handler(CommandHandler("admin", admin))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(CallbackQueryHandler(admin_buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_msg))
