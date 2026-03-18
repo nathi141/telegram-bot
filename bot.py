@@ -1,89 +1,80 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, ContextTypes
 
-# Your Bot Token
 TOKEN = "8777576356:AAF5WKlcBPE1mszTBs6otvWdvwxgr9dFISs"
 
-# Function to create the main menu keyboard
+# Store users and referrals (simple memory storage)
+users = {}
+referrals = {}
+
+# Main menu keyboard
 def main_menu_keyboard():
     keyboard = [
-        [InlineKeyboardButton("💸 Make money online", callback_data='earn')],
-        [InlineKeyboardButton("💰 Manage TON wallet", callback_data='wallet')],
-        [InlineKeyboardButton("📢 Create Telegram ads", callback_data='ads')],
-        [InlineKeyboardButton("🛠 Tools & Resources", callback_data='tools')],
-        [InlineKeyboardButton("📈 Updates & Tips", callback_data='updates')]
+        [InlineKeyboardButton("💸 Earn Money", callback_data='earn')],
+        [InlineKeyboardButton("👥 My Referrals", callback_data='ref')],
+        [InlineKeyboardButton("💰 Wallet", callback_data='wallet')],
     ]
     return InlineKeyboardMarkup(keyboard)
 
-# /start command
+# Start command with referral tracking
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    welcome_text = (
-        "BizBoostProBot 💼🚀\n\n"
-        "Your all-in-one digital assistant for growing and managing your online business.\n\n"
-        "This bot helps you access and manage your TON wallet, create and run Telegram ads, "
-        "and discover smart ways to earn online. It also provides tools, updates, and resources "
-        "to help you build and scale your presence across different platforms.\n\n"
-        "Whether you’re starting out or looking to grow, BizBoostProBot is here to simplify "
-        "everything and boost your success.🚀💸\n\n"
-        "Choose an option below to get started 👇"
-    )
-    await update.message.reply_text(welcome_text, reply_markup=main_menu_keyboard())
+    user_id = update.effective_user.id
 
-# Callback handler for buttons
+    # Check referral
+    if context.args:
+        referrer_id = context.args[0]
+        if referrer_id != str(user_id):
+            referrals[referrer_id] = referrals.get(referrer_id, 0) + 1
+
+    users[user_id] = True
+
+    await update.message.reply_text(
+        "🎉 Welcome to BizBoostPro!\n\n"
+        "Earn money by inviting others and using our tools.\n\n"
+        "Choose an option below 👇",
+        reply_markup=main_menu_keyboard()
+    )
+
+# Button handler
 async def button_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
-    await query.answer()  # Acknowledge button click
+    await query.answer()
+    user_id = str(query.from_user.id)
 
-    back_button = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back to Main Menu", callback_data='main')]])
+    back_btn = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data='main')]])
 
-    # Instead of edit_message_text, we use reply_text to prevent crashes
     if query.data == 'earn':
-        await query.message.reply_text(
-            "💸 Here are ways to earn online using Telegram:\n"
-            "1. Share referral links\n"
-            "2. Join Telegram affiliate programs\n"
-            "3. Sell digital products or services",
-            reply_markup=back_button
+        referral_link = f"https://t.me/YOUR_BOT_USERNAME?start={user_id}"
+        await query.edit_message_text(
+            f"💸 Earn Money!\n\n"
+            f"Invite friends using your link:\n{referral_link}\n\n"
+            f"Earn rewards for every user that joins!",
+            reply_markup=back_btn
         )
+
+    elif query.data == 'ref':
+        count = referrals.get(user_id, 0)
+        await query.edit_message_text(
+            f"👥 Your Referrals: {count}\n\n"
+            f"Keep inviting more people to earn more!",
+            reply_markup=back_btn
+        )
+
     elif query.data == 'wallet':
-        await query.message.reply_text(
-            "💰 Your TON wallet is ready!\n"
-            "Check balance, transactions, or manage your wallet here.",
-            reply_markup=back_button
+        await query.edit_message_text(
+            "💰 Wallet system coming soon!",
+            reply_markup=back_btn
         )
-    elif query.data == 'ads':
-        await query.message.reply_text(
-            "📢 Manage your Telegram ads easily!\n"
-            "You can create campaigns and track performance here.",
-            reply_markup=back_button
-        )
-    elif query.data == 'tools':
-        await query.message.reply_text(
-            "🛠 Tools & Resources:\n"
-            "- Guides for online business\n"
-            "- Productivity tools\n"
-            "- Telegram bot tips",
-            reply_markup=back_button
-        )
-    elif query.data == 'updates':
-        await query.message.reply_text(
-            "📈 Updates & Tips:\n"
-            "- New earning methods\n"
-            "- Latest TON wallet updates\n"
-            "- Telegram platform news",
-            reply_markup=back_button
-        )
+
     elif query.data == 'main':
-        # Send new main menu
-        await query.message.reply_text(
-            "Main Menu:",
+        await query.edit_message_text(
+            "🏠 Main Menu",
             reply_markup=main_menu_keyboard()
         )
 
-# Build the bot application
+# Run bot
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(button_handler))
 
-# Run the bot
 app.run_polling()
