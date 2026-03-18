@@ -4,9 +4,11 @@ import sqlite3
 
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
 
-# Admin
-ADMIN_WALLET = "PASTE_YOUR_TON_WALLET_HERE"
-ADMIN_IDS = ["6502235975", "8366726152"]  # <-- Add both your admin IDs here
+# Admin accounts
+ADMIN_IDS = ["6502235975", "8366726152"]  # Both your admin accounts
+
+# TON wallet address
+ADMIN_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
 
 # ------------------------------
 # Database
