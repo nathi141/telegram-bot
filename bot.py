@@ -1,15 +1,13 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 import sqlite3
-import asyncio
 
 # ================= CONFIG =================
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"  # Your Bot Token
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"  # Your TON Wallet
-TON_API_KEY = "41d6584cbce3d9d50c0ca67e38becfe1154236dfe27a7ff8f0992e2b7c613ace"  # TON API Key
 ADMIN_IDS = [8366726152, 6502235975]  # Admin Telegram IDs
-CHANNELS = ["@YourChannel1", "@YourChannel2"]  # Put your channels here
-POST_INTERVAL = 3600  # seconds, e.g., 3600 = every 1 hour
+CHANNELS = ["@YourChannel1", "@YourChannel2"]  # Replace with your channel usernames
+POST_INTERVAL = 3600  # seconds between automatic posts
 
 # ================= DATABASE =================
 conn = sqlite3.connect('bot.db', check_same_thread=False)
@@ -60,13 +58,10 @@ def main_menu():
 # ================= START =================
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
-    try:
-        cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
-        conn.commit()
-    except:
-        pass
+    cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
+    conn.commit()
 
-    # Referral handling
+    # Handle referrals
     if context.args:
         try:
             ref = int(context.args[0])
@@ -144,11 +139,13 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["step"] = "link"
             await update.message.reply_text("🔗 Send your Ad LINK")
             return
+
         if step == "link":
             context.user_data["ad_link"] = text
             context.user_data["step"] = "amount"
             await update.message.reply_text("💰 Enter budget")
             return
+
         if step == "amount":
             try:
                 amount = float(text)
@@ -251,19 +248,21 @@ async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"⚠️ Error: {str(e)}")
 
 # ================= AUTO POSTING =================
+posts = [
+    "📢 Run ads to real users using our platform!",
+    "💰 3 ways to make money online using Telegram",
+    "📊 Best time to run ads for maximum reach"
+]
+post_index = 0  # Keep track of current post
+
 async def auto_post(context: ContextTypes.DEFAULT_TYPE):
-    posts = [
-        "📢 Run ads to real users using our platform!",
-        "💰 3 ways to make money online using Telegram",
-        "📊 Best time to run ads for maximum reach"
-    ]
+    global post_index
     for channel in CHANNELS:
         try:
-            await context.bot.send_message(channel, posts[0], disable_notification=True)
-        except:
-            pass
-    # Rotate posts
-    posts.append(posts.pop(0))
+            await context.bot.send_message(channel, posts[post_index], disable_notification=True)
+        except Exception as e:
+            print(f"Failed to post to {channel}: {e}")
+    post_index = (post_index + 1) % len(posts)
 
 # ================= BOT =================
 app = ApplicationBuilder().token(TOKEN).build()
@@ -279,4 +278,5 @@ app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
 job_queue = app.job_queue
 job_queue.run_repeating(auto_post, interval=POST_INTERVAL, first=10)
 
+# Run the bot
 app.run_polling()
