@@ -4,7 +4,7 @@ import sqlite3
 import random
 
 # ================= CONFIG =================
-TOKEN = "YOUR_BOT_TOKEN_HERE"  # <- Replace this with your bot token
+TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g" 
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
 ADMIN_IDS = [8366726152, 6502235975]
 CHANNELS = ["@DigitalAdCentral", "@GlobalAds_Hub"]
