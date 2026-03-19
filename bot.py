@@ -3,7 +3,6 @@ import sqlite3
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
-import asyncio
 
 # ================= LOGGING =================
 logging.basicConfig(
@@ -12,7 +11,7 @@ logging.basicConfig(
 )
 
 # ================= CONFIG =================
-TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"  # Your Bot Token
+TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
 ADMIN_IDS = [8366726152, 6502235975]
 CHANNELS = ["@DigitalAdCentral", "@GlobalAds_Hub"]
@@ -200,22 +199,15 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
             logging.error(f"Auto post failed for {chat}: {e}")
 
 # ================= RUN BOT =================
-async def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(buttons))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
-    app.add_handler(CommandHandler("approve", approve))
-    app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
+app = ApplicationBuilder().token(TOKEN).build()
+app.add_handler(CommandHandler("start", start))
+app.add_handler(CallbackQueryHandler(buttons))
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
+app.add_handler(CommandHandler("approve", approve))
+app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
 
-    # Schedule auto posting
-    app.job_queue.run_repeating(auto_post, interval=POST_INTERVAL, first=10)
+# Schedule auto posting
+app.job_queue.run_repeating(auto_post, interval=POST_INTERVAL, first=10)
 
-    # Run polling forever
-    while True:
-        try:
-            await app.run_polling()
-        except Exception as e:
-            logging.error(f"Polling error: {e}")
-
-asyncio.run(main())
+# This line keeps the bot running forever (no while True needed!)
+app.run_polling()
