@@ -67,23 +67,19 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             bal = row[0] if row else 0
             link = f"https://t.me/BizBoostProBot?start={user_id}"
             await q.edit_message_text(f"💸 Balance: {bal} TON\n\nInvite friends:\n{link}", reply_markup=back)
-
         elif q.data == "ref":
             cursor.execute("SELECT count FROM referrals WHERE referrer_id=?", (user_id,))
             row = cursor.fetchone()
             count = row[0] if row else 0
             await q.edit_message_text(f"👥 Referrals: {count}", reply_markup=back)
-
         elif q.data == "wallet":
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
             row = cursor.fetchone()
             bal = row[0] if row else 0
             await q.edit_message_text(f"💰 Balance: {bal} TON\nDeposit to:\n{TON_WALLET}\n\nWithdraw: Tools → Withdraw", reply_markup=back)
-
         elif q.data == "ads":
             context.user_data["step"] = "text"
             await q.message.reply_text("📢 Send your Ad TEXT")
-
         elif q.data == "tools":
             keyboard = InlineKeyboardMarkup([
                 [InlineKeyboardButton("💳 Withdraw", callback_data="withdraw")],
@@ -91,14 +87,11 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 [InlineKeyboardButton("💰 Check Balance", callback_data="wallet")]
             ])
             await q.edit_message_text("🛠 Tools Menu:", reply_markup=keyboard)
-
         elif q.data == "withdraw":
             context.user_data["step"] = "withdraw_amount"
             await q.message.reply_text("💰 Enter amount to withdraw:")
-
         elif q.data == "main":
             await q.edit_message_text("🏠 Main Menu", reply_markup=main_menu())
-
     except Exception as e:
         logging.error(f"Buttons error: {e}")
 
@@ -113,20 +106,17 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             context.user_data["step"] = "link"
             await update.message.reply_text("🔗 Send your Ad LINK")
             return
-
         if step == "link":
             context.user_data["ad_link"] = text
             context.user_data["step"] = "amount"
             await update.message.reply_text("💰 Enter budget")
             return
-
         if step == "amount":
             try:
                 amount = float(text)
             except:
                 await update.message.reply_text("Enter a valid number")
                 return
-
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
             row = cursor.fetchone()
             bal = row[0] if row else 0
@@ -134,26 +124,21 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Not enough balance")
                 context.user_data.clear()
                 return
-
             cursor.execute("INSERT INTO ads(user_id,text,link,amount) VALUES(?,?,?,?)",
                            (user_id, context.user_data["ad_text"], context.user_data["ad_link"], amount))
             conn.commit()
             ad_id = cursor.lastrowid
-
             for admin in ADMIN_IDS:
                 await context.bot.send_message(admin,
                     f"📢 New Ad #{ad_id} submitted by {user_id}\n{context.user_data['ad_text']}\n{context.user_data['ad_link']}\n💰 Budget: {amount}\nApprove: /approve {ad_id}")
-
             await update.message.reply_text("✅ Ad submitted for approval")
             context.user_data.clear()
-
         if step == "withdraw_amount":
             try:
                 amount = float(text)
             except:
                 await update.message.reply_text("Enter a valid number")
                 return
-
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
             row = cursor.fetchone()
             bal = row[0] if row else 0
@@ -161,17 +146,13 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("❌ Insufficient balance")
                 context.user_data.clear()
                 return
-
             cursor.execute("INSERT INTO withdrawals(user_id,amount) VALUES(?,?)", (user_id, amount))
             conn.commit()
-
             for admin in ADMIN_IDS:
                 await context.bot.send_message(admin,
                     f"💰 Withdrawal request by {user_id}\nAmount: {amount}\nApprove: /approve_withdraw {cursor.lastrowid}")
-
             await update.message.reply_text("✅ Withdrawal submitted for admin approval")
             context.user_data.clear()
-
     except Exception as e:
         logging.error(f"Messages error: {e}")
 
@@ -181,13 +162,11 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("❌ Access denied")
     if not context.args: 
         return await update.message.reply_text("Usage: /approve <ad_id>")
-
     ad_id = int(context.args[0])
     cursor.execute("SELECT user_id, amount, status FROM ads WHERE ad_id=? AND status='pending'", (ad_id,))
     ad = cursor.fetchone()
     if not ad:
         return await update.message.reply_text("❌ Ad not found or already approved")
-
     ad_user, amount, _ = ad
     cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, ad_user))
     cursor.execute("UPDATE ads SET status='approved' WHERE ad_id=?", (ad_id,))
@@ -200,13 +179,11 @@ async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return await update.message.reply_text("❌ Access denied")
     if not context.args: 
         return await update.message.reply_text("Usage: /approve_withdraw <withdraw_id>")
-
     wid = int(context.args[0])
     cursor.execute("SELECT user_id, amount, status FROM withdrawals WHERE withdraw_id=? AND status='pending'", (wid,))
     req = cursor.fetchone()
     if not req:
         return await update.message.reply_text("❌ Request not found")
-
     w_user, amount, _ = req
     cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, w_user))
     cursor.execute("UPDATE withdrawals SET status='approved' WHERE withdraw_id=?", (wid,))
@@ -241,23 +218,24 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.error(f"Auto post failed for {chat}: {e}")
 
-# ================= RUN BOT =================
-async def main():
-    app = ApplicationBuilder().token(TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CallbackQueryHandler(buttons))
-    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
-    app.add_handler(CommandHandler("approve", approve))
-    app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
-
-    # schedule auto-posting
-    app.job_queue.run_repeating(auto_post, interval=POST_INTERVAL, first=10)
-
-    # initialize and start the bot properly (24/7)
-    await app.initialize()
-    await app.start()
-    await app.updater.start_polling()
-    await app.updater.idle()
+# ================= CRASH-PROOF RUNNER =================
+async def run_bot_forever():
+    while True:
+        try:
+            app = ApplicationBuilder().token(TOKEN).build()
+            app.add_handler(CommandHandler("start", start))
+            app.add_handler(CallbackQueryHandler(buttons))
+            app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
+            app.add_handler(CommandHandler("approve", approve))
+            app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
+            app.job_queue.run_repeating(auto_post, interval=POST_INTERVAL, first=10)
+            await app.initialize()
+            await app.start()
+            await app.updater.start_polling()
+            await app.updater.idle()
+        except Exception as e:
+            logging.error(f"Bot crashed: {e}. Restarting in 5 seconds...")
+            await asyncio.sleep(5)  # wait before restarting
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(run_bot_forever())
