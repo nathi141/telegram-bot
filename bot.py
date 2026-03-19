@@ -1,13 +1,15 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputMediaPhoto
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 import sqlite3
+import random
 
 # ================= CONFIG =================
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"  # Your Bot Token
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"  # Your TON Wallet
 ADMIN_IDS = [8366726152, 6502235975]  # Admin Telegram IDs
-CHANNELS = ["@YourChannel1", "@YourChannel2"]  # Replace with your channel usernames
-POST_INTERVAL = 3600  # seconds between automatic posts
+CHANNELS = ["@DigitalAdCentral", "@GlobalAds_Hub"]  # Channels
+GROUP = "@AdMastersCommunity"  # Group
+POST_INTERVAL = 3600  # seconds between auto posts
 
 # ================= DATABASE =================
 conn = sqlite3.connect('bot.db', check_same_thread=False)
@@ -61,7 +63,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
     conn.commit()
 
-    # Handle referrals
     if context.args:
         try:
             ref = int(context.args[0])
@@ -133,7 +134,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     step = context.user_data.get("step")
 
     try:
-        # ---------------- ADS FLOW ----------------
         if step == "text":
             context.user_data["ad_text"] = text
             context.user_data["step"] = "link"
@@ -173,7 +173,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("✅ Ad submitted for approval")
             context.user_data.clear()
 
-        # ---------------- WITHDRAW FLOW ----------------
         if step == "withdraw_amount":
             try:
                 amount = float(text)
@@ -202,81 +201,80 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= ADMIN COMMANDS =================
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        if update.effective_user.id not in ADMIN_IDS:
-            await update.message.reply_text("❌ Access denied")
-            return
-        if not context.args:
-            await update.message.reply_text("Usage: /approve <ad_id>")
-            return
-        ad_id = int(context.args[0])
-        cursor.execute("SELECT user_id, amount, status FROM ads WHERE ad_id=? AND status='pending'", (ad_id,))
-        ad = cursor.fetchone()
-        if not ad:
-            await update.message.reply_text("❌ Ad not found or already approved")
-            return
-        ad_user, amount, _ = ad
-        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, ad_user))
-        cursor.execute("UPDATE ads SET status='approved' WHERE ad_id=?", (ad_id,))
-        conn.commit()
-        await context.bot.send_message(ad_user, f"✅ Your ad #{ad_id} is approved")
-        await update.message.reply_text(f"✅ Ad #{ad_id} approved and balance deducted")
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Error: {str(e)}")
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Access denied")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /approve <ad_id>")
+        return
+    ad_id = int(context.args[0])
+    cursor.execute("SELECT user_id, amount, status FROM ads WHERE ad_id=? AND status='pending'", (ad_id,))
+    ad = cursor.fetchone()
+    if not ad:
+        await update.message.reply_text("❌ Ad not found or already approved")
+        return
+    ad_user, amount, _ = ad
+    cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, ad_user))
+    cursor.execute("UPDATE ads SET status='approved' WHERE ad_id=?", (ad_id,))
+    conn.commit()
+    await context.bot.send_message(ad_user, f"✅ Your ad #{ad_id} is approved")
+    await update.message.reply_text(f"✅ Ad #{ad_id} approved and balance deducted")
 
 async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    try:
-        if update.effective_user.id not in ADMIN_IDS:
-            await update.message.reply_text("❌ Access denied")
-            return
-        if not context.args:
-            await update.message.reply_text("Usage: /approve_withdraw <withdraw_id>")
-            return
-        wid = int(context.args[0])
-        cursor.execute("SELECT user_id, amount, status FROM withdrawals WHERE withdraw_id=? AND status='pending'", (wid,))
-        req = cursor.fetchone()
-        if not req:
-            await update.message.reply_text("❌ Request not found")
-            return
-        w_user, amount, _ = req
-        cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, w_user))
-        cursor.execute("UPDATE withdrawals SET status='approved' WHERE withdraw_id=?", (wid,))
-        conn.commit()
-        await context.bot.send_message(w_user, f"✅ Your withdrawal of {amount} TON is approved")
-        await update.message.reply_text(f"✅ Withdrawal #{wid} approved")
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Error: {str(e)}")
+    if update.effective_user.id not in ADMIN_IDS:
+        await update.message.reply_text("❌ Access denied")
+        return
+    if not context.args:
+        await update.message.reply_text("Usage: /approve_withdraw <withdraw_id>")
+        return
+    wid = int(context.args[0])
+    cursor.execute("SELECT user_id, amount, status FROM withdrawals WHERE withdraw_id=? AND status='pending'", (wid,))
+    req = cursor.fetchone()
+    if not req:
+        await update.message.reply_text("❌ Request not found")
+        return
+    w_user, amount, _ = req
+    cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, w_user))
+    cursor.execute("UPDATE withdrawals SET status='approved' WHERE withdraw_id=?", (wid,))
+    conn.commit()
+    await context.bot.send_message(w_user, f"✅ Your withdrawal of {amount} TON is approved")
+    await update.message.reply_text(f"✅ Withdrawal #{wid} approved")
 
 # ================= AUTO POSTING =================
 posts = [
-    "📢 Run ads to real users using our platform!",
-    "💰 3 ways to make money online using Telegram",
-    "📊 Best time to run ads for maximum reach"
+    {
+        "text": "📢 Run ads to real users using our platform!",
+        "image": "https://i.imgur.com/0Z1w3sD.png"
+    },
+    {
+        "text": "💰 3 ways to make money online using Telegram",
+        "image": "https://i.imgur.com/U1Cz4hG.png"
+    },
+    {
+        "text": "📊 Best time to run ads for maximum reach",
+        "image": "https://i.imgur.com/5vH4rT7.png"
+    }
 ]
-post_index = 0  # Keep track of current post
 
 async def auto_post(context: ContextTypes.DEFAULT_TYPE):
-    global post_index
-    for channel in CHANNELS:
+    all_chats = CHANNELS + [GROUP]
+    post = random.choice(posts)
+    for chat in all_chats:
         try:
-            await context.bot.send_message(channel, posts[post_index], disable_notification=True)
+            await context.bot.send_photo(chat_id=chat, photo=post["image"], caption=post["text"], disable_notification=True)
         except Exception as e:
-            print(f"Failed to post to {channel}: {e}")
-    post_index = (post_index + 1) % len(posts)
+            print(f"Failed to post to {chat}: {e}")
 
 # ================= BOT =================
 app = ApplicationBuilder().token(TOKEN).build()
 
-# Add handlers
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
 app.add_handler(CommandHandler("approve", approve))
 app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
 
-# Scheduler for auto-posting
 job_queue = app.job_queue
 job_queue.run_repeating(auto_post, interval=POST_INTERVAL, first=10)
 
-# Run the bot
 app.run_polling()
