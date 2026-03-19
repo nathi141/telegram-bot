@@ -1,19 +1,19 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
-from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
-import sqlite3, random
+from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters, JobQueue
+import sqlite3
+import random
 
 # ================= CONFIG =================
-TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
+TOKEN = "YOUR_BOT_TOKEN_HERE"  # <- Replace this with your bot token
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
 ADMIN_IDS = [8366726152, 6502235975]
 CHANNELS = ["@DigitalAdCentral", "@GlobalAds_Hub"]
 GROUP = "@AdMastersCommunity"
-POST_INTERVAL = 3600  # 1 hour
+POST_INTERVAL = 3600  # every 1 hour
 
 # ================= DATABASE =================
 conn = sqlite3.connect('bot.db', check_same_thread=False)
 cursor = conn.cursor()
-
 cursor.execute("""CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0)""")
 cursor.execute("""CREATE TABLE IF NOT EXISTS referrals (referrer_id INTEGER PRIMARY KEY, count INTEGER DEFAULT 0)""")
 cursor.execute("""CREATE TABLE IF NOT EXISTS ads (ad_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, text TEXT, link TEXT, amount REAL, status TEXT DEFAULT 'pending')""")
@@ -35,7 +35,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
     conn.commit()
-
     if context.args:
         try:
             ref = int(context.args[0])
@@ -45,7 +44,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 conn.commit()
         except:
             pass
-
     await update.message.reply_text("🎉 Welcome to BizBoostPro!\n\nChoose an option 👇", reply_markup=main_menu())
 
 # ================= BUTTONS =================
@@ -54,11 +52,11 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await q.answer()
     user_id = q.from_user.id
     back = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]])
-
     try:
         if q.data == "earn":
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            bal = cursor.fetchone()[0] if cursor.fetchone() else 0
+            bal = cursor.fetchone()
+            bal = bal[0] if bal else 0
             link = f"https://t.me/BizBoostProBot?start={user_id}"
             await q.edit_message_text(f"💸 Balance: {bal} TON\n\nInvite friends:\n{link}", reply_markup=back)
         elif q.data == "ref":
@@ -68,7 +66,8 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.edit_message_text(f"👥 Referrals: {count}", reply_markup=back)
         elif q.data == "wallet":
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            bal = cursor.fetchone()[0] if cursor.fetchone() else 0
+            bal = cursor.fetchone()
+            bal = bal[0] if bal else 0
             await q.edit_message_text(f"💰 Balance: {bal} TON\nDeposit to:\n{TON_WALLET}\n\nWithdraw: Tools → Withdraw", reply_markup=back)
         elif q.data == "ads":
             context.user_data["step"] = "text"
@@ -110,7 +109,8 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("Enter a valid number")
                 return
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            bal = cursor.fetchone()[0] if cursor.fetchone() else 0
+            bal = cursor.fetchone()
+            bal = bal[0] if cursor.fetchone() else 0
             if bal < amount:
                 await update.message.reply_text("❌ Not enough balance")
                 context.user_data.clear()
@@ -130,7 +130,8 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text("Enter a valid number")
                 return
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-            bal = cursor.fetchone()[0] if cursor.fetchone() else 0
+            bal = cursor.fetchone()
+            bal = bal[0] if cursor.fetchone() else 0
             if bal < amount:
                 await update.message.reply_text("❌ Insufficient balance")
                 context.user_data.clear()
@@ -138,7 +139,8 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("INSERT INTO withdrawals(user_id,amount) VALUES(?,?)", (user_id, amount))
             conn.commit()
             for admin in ADMIN_IDS:
-                await context.bot.send_message(admin, f"💰 Withdrawal request by {user_id}\nAmount: {amount}\nApprove: /approve_withdraw {cursor.lastrowid}")
+                await context.bot.send_message(admin,
+                    f"💰 Withdrawal request by {user_id}\nAmount: {amount}\nApprove: /approve_withdraw {cursor.lastrowid}")
             await update.message.reply_text("✅ Withdrawal submitted for admin approval")
             context.user_data.clear()
     except Exception as e:
@@ -173,27 +175,34 @@ async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await context.bot.send_message(w_user, f"✅ Your withdrawal of {amount} TON is approved")
     await update.message.reply_text(f"✅ Withdrawal #{wid} approved")
 
-# ================= AUTO POST =================
+# ================= AUTO POST WITH ROTATION =================
 posts = [
     {"text":"📢 Run ads to real users!","image":"https://i.imgur.com/0Z1w3sD.png"},
     {"text":"💰 3 ways to make money online!","image":"https://i.imgur.com/U1Cz4hG.png"},
     {"text":"📊 Best time to run ads!","image":"https://i.imgur.com/5vH4rT7.png"}
 ]
+last_post_index = -1
 
 async def auto_post(context: ContextTypes.DEFAULT_TYPE):
+    global last_post_index
     all_chats = CHANNELS + [GROUP]
-    post = random.choice(posts)
+    available_indices = [i for i in range(len(posts)) if i != last_post_index]
+    post_index = random.choice(available_indices)
+    last_post_index = post_index
+    post = posts[post_index]
+
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("👥 Join Group", url=f"https://t.me/AdMastersCommunity")],
         [InlineKeyboardButton("🌐 Learn More", url=f"https://t.me/DigitalAdCentral")]
     ])
+
     for chat in all_chats:
         try:
             await context.bot.send_photo(chat_id=chat, photo=post["image"], caption=post["text"], reply_markup=buttons, disable_notification=True)
         except Exception as e:
             print(f"Failed to post to {chat}: {e}")
 
-# ================= BOT =================
+# ================= RUN BOT =================
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(buttons))
