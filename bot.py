@@ -1,12 +1,15 @@
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 import sqlite3
+import asyncio
 
 # ================= CONFIG =================
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"  # Your Bot Token
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"  # Your TON Wallet
 TON_API_KEY = "41d6584cbce3d9d50c0ca67e38becfe1154236dfe27a7ff8f0992e2b7c613ace"  # TON API Key
 ADMIN_IDS = [8366726152, 6502235975]  # Admin Telegram IDs
+CHANNELS = ["@YourChannel1", "@YourChannel2"]  # Put your channels here
+POST_INTERVAL = 3600  # seconds, e.g., 3600 = every 1 hour
 
 # ================= DATABASE =================
 conn = sqlite3.connect('bot.db', check_same_thread=False)
@@ -247,12 +250,33 @@ async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error: {str(e)}")
 
+# ================= AUTO POSTING =================
+async def auto_post(context: ContextTypes.DEFAULT_TYPE):
+    posts = [
+        "📢 Run ads to real users using our platform!",
+        "💰 3 ways to make money online using Telegram",
+        "📊 Best time to run ads for maximum reach"
+    ]
+    for channel in CHANNELS:
+        try:
+            await context.bot.send_message(channel, posts[0], disable_notification=True)
+        except:
+            pass
+    # Rotate posts
+    posts.append(posts.pop(0))
+
 # ================= BOT =================
 app = ApplicationBuilder().token(TOKEN).build()
+
+# Add handlers
 app.add_handler(CommandHandler("start", start))
 app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
 app.add_handler(CommandHandler("approve", approve))
 app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
+
+# Scheduler for auto-posting
+job_queue = app.job_queue
+job_queue.run_repeating(auto_post, interval=POST_INTERVAL, first=10)
 
 app.run_polling()
