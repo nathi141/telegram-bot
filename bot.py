@@ -1,9 +1,9 @@
-import os
 import logging
 import sqlite3
 import random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
+import asyncio
 
 # ================= LOGGING =================
 logging.basicConfig(
@@ -12,8 +12,8 @@ logging.basicConfig(
 )
 
 # ================= CONFIG =================
-TOKEN = os.environ.get("BOT_TOKEN")  # <-- Set BOT_TOKEN in Railway environment variables
-TON_WALLET = os.environ.get("TON_WALLET", "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf")
+TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"  # Your Bot Token
+TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
 ADMIN_IDS = [8366726152, 6502235975]
 CHANNELS = ["@DigitalAdCentral", "@GlobalAds_Hub"]
 GROUP = "@AdMastersCommunity"
@@ -98,7 +98,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text = update.message.text
     step = context.user_data.get("step")
     try:
-        # ---------- ADS ----------
         if step == "text":
             context.user_data["ad_text"] = text
             context.user_data["step"] = "link"
@@ -126,7 +125,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     f"📢 New Ad #{ad_id} submitted by {user_id}\n{context.user_data['ad_text']}\n{context.user_data['ad_link']}\n💰 Budget: {amount}\nApprove: /approve {ad_id}")
             await update.message.reply_text("✅ Ad submitted for approval")
             context.user_data.clear()
-        # ---------- WITHDRAW ----------
         if step == "withdraw_amount":
             amount = float(text)
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
@@ -147,10 +145,8 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ================= ADMIN =================
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS: 
-        return await update.message.reply_text("❌ Access denied")
-    if not context.args: 
-        return await update.message.reply_text("Usage: /approve <ad_id>")
+    if update.effective_user.id not in ADMIN_IDS: return await update.message.reply_text("❌ Access denied")
+    if not context.args: return await update.message.reply_text("Usage: /approve <ad_id>")
     ad_id = int(context.args[0])
     cursor.execute("SELECT user_id, amount, status FROM ads WHERE ad_id=? AND status='pending'", (ad_id,))
     ad = cursor.fetchone()
@@ -163,10 +159,8 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(f"✅ Ad #{ad_id} approved")
 
 async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS: 
-        return await update.message.reply_text("❌ Access denied")
-    if not context.args: 
-        return await update.message.reply_text("Usage: /approve_withdraw <withdraw_id>")
+    if update.effective_user.id not in ADMIN_IDS: return await update.message.reply_text("❌ Access denied")
+    if not context.args: return await update.message.reply_text("Usage: /approve_withdraw <withdraw_id>")
     wid = int(context.args[0])
     cursor.execute("SELECT user_id, amount, status FROM withdrawals WHERE withdraw_id=? AND status='pending'", (wid,))
     req = cursor.fetchone()
@@ -224,5 +218,4 @@ async def main():
         except Exception as e:
             logging.error(f"Polling error: {e}")
 
-import asyncio
 asyncio.run(main())
