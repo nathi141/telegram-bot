@@ -1,6 +1,7 @@
 import logging
 import sqlite3
 import random
+import asyncio
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 
@@ -129,7 +130,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
             row = cursor.fetchone()
             bal = row[0] if row else 0
-
             if bal < amount:
                 await update.message.reply_text("❌ Not enough balance")
                 context.user_data.clear()
@@ -157,7 +157,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
             row = cursor.fetchone()
             bal = row[0] if row else 0
-
             if bal < amount:
                 await update.message.reply_text("❌ Insufficient balance")
                 context.user_data.clear()
@@ -232,8 +231,8 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
     post = posts[post_index]
 
     buttons = InlineKeyboardMarkup([
-        [InlineKeyboardButton("👥 Join Group", url=f"https://t.me/AdMastersCommunity")],
-        [InlineKeyboardButton("🌐 Learn More", url=f"https://t.me/DigitalAdCentral")]
+        [InlineKeyboardButton("👥 Join Group", url="https://t.me/AdMastersCommunity")],
+        [InlineKeyboardButton("🌐 Learn More", url="https://t.me/DigitalAdCentral")]
     ])
 
     for chat in all_chats:
@@ -254,11 +253,11 @@ async def main():
     # schedule auto-posting
     app.job_queue.run_repeating(auto_post, interval=POST_INTERVAL, first=10)
 
-    # start polling
+    # initialize and start the bot properly (24/7)
     await app.initialize()
     await app.start()
     await app.updater.start_polling()
     await app.updater.idle()
 
-import asyncio
-asyncio.run(main())
+if __name__ == "__main__":
+    asyncio.run(main())
