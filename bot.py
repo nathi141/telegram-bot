@@ -176,11 +176,11 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         logging.error(f"Messages error: {e}")
 
-# ================= ADMIN COMMANDS =================
+# ================= ADMIN =================
 async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id not in ADMIN_IDS:
+    if update.effective_user.id not in ADMIN_IDS: 
         return await update.message.reply_text("❌ Access denied")
-    if not context.args:
+    if not context.args: 
         return await update.message.reply_text("Usage: /approve <ad_id>")
 
     ad_id = int(context.args[0])
@@ -193,4 +193,72 @@ async def approve(update: Update, context: ContextTypes.DEFAULT_TYPE):
     cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, ad_user))
     cursor.execute("UPDATE ads SET status='approved' WHERE ad_id=?", (ad_id,))
     conn.commit()
-    await context.bot.send_message
+    await context.bot.send_message(ad_user, f"✅ Your ad #{ad_id} is approved")
+    await update.message.reply_text(f"✅ Ad #{ad_id} approved")
+
+async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id not in ADMIN_IDS: 
+        return await update.message.reply_text("❌ Access denied")
+    if not context.args: 
+        return await update.message.reply_text("Usage: /approve_withdraw <withdraw_id>")
+
+    wid = int(context.args[0])
+    cursor.execute("SELECT user_id, amount, status FROM withdrawals WHERE withdraw_id=? AND status='pending'", (wid,))
+    req = cursor.fetchone()
+    if not req:
+        return await update.message.reply_text("❌ Request not found")
+
+    w_user, amount, _ = req
+    cursor.execute("UPDATE users SET balance = balance - ? WHERE user_id=?", (amount, w_user))
+    cursor.execute("UPDATE withdrawals SET status='approved' WHERE withdraw_id=?", (wid,))
+    conn.commit()
+    await context.bot.send_message(w_user, f"✅ Your withdrawal of {amount} TON is approved")
+    await update.message.reply_text(f"✅ Withdrawal #{wid} approved")
+
+# ================= AUTO POST =================
+posts = [
+    {"text":"📢 Run ads to real users!","image":"https://i.imgur.com/0Z1w3sD.png"},
+    {"text":"💰 3 ways to make money online!","image":"https://i.imgur.com/U1Cz4hG.png"},
+    {"text":"📊 Best time to run ads!","image":"https://i.imgur.com/5vH4rT7.png"}
+]
+last_post_index = -1
+
+async def auto_post(context: ContextTypes.DEFAULT_TYPE):
+    global last_post_index
+    all_chats = CHANNELS + [GROUP]
+    available_indices = [i for i in range(len(posts)) if i != last_post_index]
+    post_index = random.choice(available_indices)
+    last_post_index = post_index
+    post = posts[post_index]
+
+    buttons = InlineKeyboardMarkup([
+        [InlineKeyboardButton("👥 Join Group", url=f"https://t.me/AdMastersCommunity")],
+        [InlineKeyboardButton("🌐 Learn More", url=f"https://t.me/DigitalAdCentral")]
+    ])
+
+    for chat in all_chats:
+        try:
+            await context.bot.send_photo(chat_id=chat, photo=post["image"], caption=post["text"], reply_markup=buttons, disable_notification=True)
+        except Exception as e:
+            logging.error(f"Auto post failed for {chat}: {e}")
+
+# ================= RUN BOT =================
+async def main():
+    app = ApplicationBuilder().token(TOKEN).build()
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(buttons))
+    app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
+    app.add_handler(CommandHandler("approve", approve))
+    app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
+
+    # schedule auto-posting
+    app.job_queue.run_repeating(auto_post, interval=POST_INTERVAL, first=10)
+
+    # start polling
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    await app.updater.idle()
+
+import asyncio
+asyncio.run(main())
