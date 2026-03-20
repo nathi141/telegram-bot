@@ -63,7 +63,6 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
         pass
 
-    # Referral handling
     if context.args:
         try:
             ref = int(context.args[0])
@@ -247,7 +246,7 @@ async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error: {str(e)}")
 
-# ================= CHANNEL / GROUP AUTO-REPLY =================
+# ================= CHANNEL / GROUP AUTO-REPLY OPTIMIZED =================
 TARGET_CHATS = [
     "@AdMastersCommunity",
     "@DigitalAdCentral",
@@ -255,8 +254,13 @@ TARGET_CHATS = [
 ]
 
 async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Ignore messages from other bots
+    if update.effective_user.is_bot:
+        return
+
+    # Only respond in target chats
     if update.effective_chat.username not in [u.strip("@") for u in TARGET_CHATS]:
-        return  # Ignore other chats
+        return
 
     text = update.message.text.lower()
     trigger_words = ["ads", "promote", "promotion", "advertise", "run ads", "marketing help"]
@@ -276,7 +280,7 @@ app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
 app.add_handler(CommandHandler("approve", approve))
 app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
 
-# Register the group/channel auto-reply handler **after other handlers**
+# Optimized group/channel handler
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, group_auto_reply))
 
 app.run_polling()
