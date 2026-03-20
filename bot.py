@@ -11,21 +11,21 @@ from telegram.ext import (
     filters,
 )
 
-# ================= LOGGING =================
+# ========== CONFIG ==========
+TOKEN = "YOUR_BOT_TOKEN"
+TON_WALLET = "YOUR_WALLET_ADDRESS"
+ADMIN_IDS = [12345, 67890]
+CHANNELS = ["@DigitalAdCentral", "@GlobalAds_Hub"]
+GROUP = "@AdMastersCommunity"
+POST_INTERVAL = 3600  # seconds
+
+# ========== LOGGING ==========
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     level=logging.INFO
 )
 
-# ================= CONFIG =================
-TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
-TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
-ADMIN_IDS = [12345, 67890]  # replace with your IDs
-CHANNELS = ["@DigitalAdCentral", "@GlobalAds_Hub"]
-GROUP = "@AdMastersCommunity"
-POST_INTERVAL = 3600  # seconds
-
-# ================= DATABASE =================
+# ========== DATABASE ==========
 conn = sqlite3.connect("bot.db", check_same_thread=False)
 cursor = conn.cursor()
 cursor.execute("CREATE TABLE IF NOT EXISTS users (user_id INTEGER PRIMARY KEY, balance REAL DEFAULT 0)")
@@ -34,7 +34,7 @@ cursor.execute("CREATE TABLE IF NOT EXISTS ads (ad_id INTEGER PRIMARY KEY AUTOIN
 cursor.execute("CREATE TABLE IF NOT EXISTS withdrawals (withdraw_id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER, amount REAL, status TEXT DEFAULT 'pending')")
 conn.commit()
 
-# ================= MENU =================
+# ========== MENU ==========
 def main_menu():
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("💸 Earn Money", callback_data="earn")],
@@ -44,37 +44,42 @@ def main_menu():
         [InlineKeyboardButton("🛠 Tools", callback_data="tools")]
     ])
 
-# ================= HANDLERS =================
+# ========== START ==========
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.effective_user.id
     cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
     conn.commit()
     await update.message.reply_text("🎉 Welcome to BizBoostPro!\nChoose an option 👇", reply_markup=main_menu())
 
+# ========== BUTTONS ==========
 async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q = update.callback_query
     await q.answer()
     user_id = q.from_user.id
     back = InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="main")]])
 
-    if q.data == "earn":
-        cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        row = cursor.fetchone()
-        bal = row[0] if row else 0
-        link = f"https://t.me/YOUR_BOT_USERNAME?start={user_id}"
-        await q.edit_message_text(f"💸 Balance: {bal} TON\nInvite: {link}", reply_markup=back)
-    elif q.data == "wallet":
-        cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
-        row = cursor.fetchone()
-        bal = row[0] if row else 0
-        await q.edit_message_text(f"💰 Balance: {bal} TON\nDeposit: {TON_WALLET}", reply_markup=back)
-    elif q.data == "main":
-        await q.edit_message_text("🏠 Main Menu", reply_markup=main_menu())
+    try:
+        if q.data == "earn":
+            cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            row = cursor.fetchone()
+            bal = row[0] if row else 0
+            link = f"https://t.me/YOUR_BOT_USERNAME?start={user_id}"
+            await q.edit_message_text(f"💸 Balance: {bal} TON\nInvite: {link}", reply_markup=back)
+        elif q.data == "wallet":
+            cursor.execute("SELECT balance FROM users WHERE user_id=?", (user_id,))
+            row = cursor.fetchone()
+            bal = row[0] if row else 0
+            await q.edit_message_text(f"💰 Balance: {bal} TON\nDeposit: {TON_WALLET}", reply_markup=back)
+        elif q.data == "main":
+            await q.edit_message_text("🏠 Main Menu", reply_markup=main_menu())
+    except Exception as e:
+        logging.error(f"Buttons error: {e}")
 
+# ========== MESSAGES ==========
 async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text("✅ Message received!")
 
-# ================= AUTO POST =================
+# ========== AUTO POST ==========
 async def auto_post(context: ContextTypes.DEFAULT_TYPE):
     posts = [
         {"text": "📢 Run ads to real users!", "image": "https://i.imgur.com/0Z1w3sD.png"},
@@ -92,7 +97,7 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
         except Exception as e:
             logging.error(f"Auto post failed for {chat}: {e}")
 
-# ================= RUN BOT =================
+# ========== RUN BOT ==========
 def run_bot():
     app = ApplicationBuilder().token(TOKEN).build()
     app.add_handler(CommandHandler("start", start))
