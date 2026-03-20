@@ -15,8 +15,8 @@ from telegram.ext import (
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"
 ADMIN_IDS = [8366726152] 
-CHANNELS = ["https://t.me/DigitalAdCentral", "https://t.me/GlobalAds_Hub"]
-GROUP = "https://t.me/AdMastersCommunity"
+CHANNELS = ["@DigitalAdCentral", "@GlobalAds_Hub"]
+GROUP = "@AdMastersCommunity"
 POST_INTERVAL = 3600  # seconds
 
 # ================= LOGGING =================
@@ -236,8 +236,8 @@ async def auto_post(context: ContextTypes.DEFAULT_TYPE):
     ]
     post = random.choice(posts)
     buttons_markup = InlineKeyboardMarkup([
-        [InlineKeyboardButton("👥 Join Group", url=f"https://t.me/{GROUP[1:]}")],
-        [InlineKeyboardButton("🌐 Learn More", url=f"https://t.me/{CHANNELS[0][1:]}")]
+        [InlineKeyboardButton("👥 Join Group", url="https://t.me/AdMastersCommunity")],
+        [InlineKeyboardButton("🌐 Learn More", url="https://t.me/DigitalAdCentral")]
     ])
     for chat in CHANNELS + [GROUP]:
         try:
