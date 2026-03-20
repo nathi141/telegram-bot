@@ -1,12 +1,27 @@
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, InputFile
 from telegram.ext import ApplicationBuilder, CommandHandler, CallbackQueryHandler, MessageHandler, ContextTypes, filters
 import sqlite3
+import asyncio
+import random
+import io
+from PIL import Image, ImageDraw, ImageFont
 
 # ================= CONFIG =================
 TOKEN = "8777576356:AAFnb1i2VXgWYum8Ridy20KWhIO-Ey1QV9g"  # Your Bot Token
 TON_WALLET = "UQA3K4E_p7Jha0foZ8Pf1WUIxRHebfRiDzX94NUV-3nyZmzf"  # Your TON Wallet
 TON_API_KEY = "41d6584cbce3d9d50c0ca67e38becfe1154236dfe27a7ff8f0992e2b7c613ace"  # TON API Key
 ADMIN_IDS = [8366726152, 6502235975]  # Admin Telegram IDs
+
+CHANNELS = [
+    "@DigitalAdCentral",
+    "@GlobalAds_Hub"
+]
+
+TARGET_CHATS = [
+    "@AdMastersCommunity",
+    "@DigitalAdCentral",
+    "@GlobalAds_Hub"
+]
 
 # ================= DATABASE =================
 conn = sqlite3.connect('bot.db', check_same_thread=False)
@@ -134,7 +149,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
     step = context.user_data.get("step")
 
     try:
-        # ---------------- ADS FLOW ----------------
         if step == "text":
             context.user_data["ad_text"] = text
             context.user_data["step"] = "link"
@@ -172,7 +186,6 @@ async def messages(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("✅ Ad submitted for approval")
             context.user_data.clear()
 
-        # ---------------- WITHDRAW FLOW ----------------
         if step == "withdraw_amount":
             try:
                 amount = float(text)
@@ -246,31 +259,48 @@ async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error: {str(e)}")
 
-# ================= CHANNEL / GROUP AUTO-REPLY OPTIMIZED =================
-TARGET_CHATS = [
-    "@AdMastersCommunity",
-    "@DigitalAdCentral",
-    "@GlobalAds_Hub"
-]
-
+# ================= GROUP / CHANNEL AUTO-REPLY =================
 async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    # Ignore messages from other bots
     if update.effective_user.is_bot:
         return
-
-    # Only respond in target chats
     if update.effective_chat.username not in [u.strip("@") for u in TARGET_CHATS]:
         return
-
     text = update.message.text.lower()
     trigger_words = ["ads", "promote", "promotion", "advertise", "run ads", "marketing help"]
-
     if any(word in text for word in trigger_words):
         user_id = update.effective_user.id
         link = f"https://t.me/BizBoostProBot?start={user_id}"
         await update.message.reply_text(
             f"💡 Need help with ads or promotions?\nRun your ads easily here: {link}"
         )
+
+# ================= AUTO-POST HOURLY =================
+async def create_image_with_text(text: str):
+    img = Image.new('RGB', (800, 400), color=(30, 144, 255))
+    d = ImageDraw.Draw(img)
+    font = ImageFont.load_default()
+    d.text((20, 180), text, fill=(255, 255, 255), font=font)
+    bio = io.BytesIO()
+    img.save(bio, format='PNG')
+    bio.seek(0)
+    return bio
+
+async def hourly_post(context: ContextTypes.DEFAULT_TYPE):
+    messages = [
+        "🚀 Boost your business with ads today!",
+        "💡 Promote your services easily with BizBoostPro!",
+        "📢 Get more eyes on your brand, run your ads now!",
+        "🔥 Engage your audience and grow your reach!"
+    ]
+    text = random.choice(messages)
+    image_file = await create_image_with_text(text)
+    for channel in CHANNELS:
+        await context.bot.send_photo(chat_id=channel, photo=InputFile(image_file), caption=text)
+
+async def schedule_hourly_posts(app):
+    while True:
+        await hourly_post(app)
+        await asyncio.sleep(3600)  # every hour
 
 # ================= BOT =================
 app = ApplicationBuilder().token(TOKEN).build()
@@ -279,8 +309,9 @@ app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
 app.add_handler(CommandHandler("approve", approve))
 app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
-
-# Optimized group/channel handler
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, group_auto_reply))
+
+# Start hourly posting in background
+asyncio.create_task(schedule_hourly_posts(app))
 
 app.run_polling()
