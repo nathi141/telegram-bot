@@ -247,6 +247,27 @@ async def approve_withdraw(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error: {str(e)}")
 
+# ================= CHANNEL / GROUP AUTO-REPLY =================
+TARGET_CHATS = [
+    "@AdMastersCommunity",
+    "@DigitalAdCentral",
+    "@GlobalAds_Hub"
+]
+
+async def group_auto_reply(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.username not in [u.strip("@") for u in TARGET_CHATS]:
+        return  # Ignore other chats
+
+    text = update.message.text.lower()
+    trigger_words = ["ads", "promote", "promotion", "advertise", "run ads", "marketing help"]
+
+    if any(word in text for word in trigger_words):
+        user_id = update.effective_user.id
+        link = f"https://t.me/BizBoostProBot?start={user_id}"
+        await update.message.reply_text(
+            f"💡 Need help with ads or promotions?\nRun your ads easily here: {link}"
+        )
+
 # ================= BOT =================
 app = ApplicationBuilder().token(TOKEN).build()
 app.add_handler(CommandHandler("start", start))
@@ -254,5 +275,8 @@ app.add_handler(CallbackQueryHandler(buttons))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, messages))
 app.add_handler(CommandHandler("approve", approve))
 app.add_handler(CommandHandler("approve_withdraw", approve_withdraw))
+
+# Register the group/channel auto-reply handler **after other handlers**
+app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, group_auto_reply))
 
 app.run_polling()
